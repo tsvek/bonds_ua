@@ -21,13 +21,15 @@ def get_bond_data(bond_id) -> dict:
         
         bond_data = {"ISIN": bond_id}
         for id in range(len(headlines)):
+            key = headlines[id].text
             if id in [5, 7]:
-                bond_data[headlines[id].text] = [date.text for date in content[id] if '.' in date]
+                bond_data[key] = [date.text for date in content[id] if '.' in date]
             else:
-                bond_data[headlines[id].text] = content[id].text.replace("\xa0", '').replace(",", '.').split()[0]
+                bond_data[key] = content[id].text.replace("\xa0", '').replace(",", '.').split()[0]
         print("Collecting succesfull.")
     else:
         print(f"Something going wrong.Status code: {response.status_code}")    
+        return {}
     return bond_data
 
 def bond_info_exists(bond_isin) -> bool:
