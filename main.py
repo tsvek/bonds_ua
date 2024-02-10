@@ -22,9 +22,9 @@ def get_bond_data(bond_id) -> dict:
         bond_data = {"ISIN": bond_id}
         for id in range(len(headlines)):
             key = headlines[id].text
-            if id in [5, 7]:
+            if id == 7:
                 bond_data[key] = [date.text for date in content[id] if '.' in date]
-            else:
+            elif id in [2, 3, 6]:
                 bond_data[key] = content[id].text.replace("\xa0", '').replace(",", '.').split()[0]
         print("Collecting succesfull.")
     else:
@@ -54,7 +54,7 @@ def save_bond_info(info, action) -> None:
         writer.writerow(info)
         print(done_print)
 
-game_on = True
+game_on = False
 while game_on:
     new = input("Do you want to add new purchase? Y or N: ")
     if new.lower() == "n":
@@ -77,3 +77,8 @@ while game_on:
     else:
         bond_info = get_bond_data(purchase_info['ISIN'])
         save_bond_info(bond_info, 'collect')
+
+isins = ['UA4000225908', 'UA4000226286', 'UA4000218531', 'UA4000227490', 'UA4000227201', 'UA4000227656', 'UA4000228043', 'UA4000229116']
+for isin in isins:
+    bond_info = get_bond_data(isin)
+    save_bond_info(bond_info, 'collect')
