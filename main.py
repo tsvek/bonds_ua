@@ -54,7 +54,7 @@ def save_bond_info(info, action) -> None:
         writer.writerow(info)
         print(done_print)
 
-game_on = False
+game_on = True
 while game_on:
     new = input("Do you want to add new purchase? Y or N: ")
     if new.lower() == "n":
@@ -68,6 +68,7 @@ while game_on:
         'Price': float(input("Enter the bond's price: ")),
         'Reinvest': float(input("Enter the amount of re-investment: ")),
         'Number': int(input("Enter the number of bond purchased: ")),
+        'Fee': float(input("Enter the fee: "))
     }
 
     save_bond_info(purchase_info, 'purchase')
@@ -77,8 +78,3 @@ while game_on:
     else:
         bond_info = get_bond_data(purchase_info['ISIN'])
         save_bond_info(bond_info, 'collect')
-
-isins = ['UA4000225908', 'UA4000226286', 'UA4000218531', 'UA4000227490', 'UA4000227201', 'UA4000227656', 'UA4000228043', 'UA4000229116']
-for isin in isins:
-    bond_info = get_bond_data(isin)
-    save_bond_info(bond_info, 'collect')
