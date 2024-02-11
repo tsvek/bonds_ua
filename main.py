@@ -66,8 +66,8 @@ while game_on:
         'Broker': input("Enter the broker name: "),
         'Date': input("Enter date of purchase(dd.mm.YYYY): "),
         'Price': float(input("Enter the bond's price: ")),
-        'Reinvest': float(input("Enter the amount of re-investment: ")),
         'Number': int(input("Enter the number of bond purchased: ")),
+        'Reinvest': float(input("Enter the amount of re-investment: ")),
         'Fee': float(input("Enter the fee: "))
     }
 
