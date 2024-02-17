@@ -45,6 +45,6 @@ result = result.drop('Coupon_payment_date', axis=1)
 
 # TODO: Add net_income column
 # TODO: Add real_yield column
-#print(result)
-print(dates_list)
+print(result)
+#print(dates_list)
 
