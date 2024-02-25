@@ -3,7 +3,7 @@ import os.path
 import requests
 
 from bs4 import BeautifulSoup
-
+from datetime import datetime, date
 
 def get_bond_data(bond_id) -> dict:
     """Parse bond's data from www.minfin.com.ua. Returns dictinary."""
@@ -18,14 +18,18 @@ def get_bond_data(bond_id) -> dict:
         
         headlines = soup.dl.find_all("dt")
         content = soup.dl.find_all("dd")
+        #payout_dates = [date.text for date in content[7] if '.' in date if datetime.strptime(date, '%d.%m.%Y') > datetime.strptime(purchase_info['Purchase_date'], '%d.%m.%Y')]
         
-        bond_data = {"ISIN": bond_id}       
-        for id in range(len(headlines)):
-            key = headlines[id].text
-            if id == 7:
-                bond_data[key] = [date.text for date in content[id] if '.' in date]
-            elif id in [2, 3, 6]:
-                bond_data[key] = content[id].text.replace("\xa0", '').replace(",", '.').split()[0]
+        bond_data = {"Nominal_yield_%": float(content[2].text.replace("\xa0", '').replace(",", '.').replace('%', '')),
+                     "Coupon_amount": float(content[3].text.replace("\xa0", '').replace(",", '.')),
+                     "Maturity_date" : content[6].text.replace("\xa0", '').replace(",", '.'),
+        }       
+        #for id in range(len(headlines)):
+        #    key = headlines[id].text
+        #    if id == 7:
+        #        bond_data[key] = [date.text for date in content[id] if '.' in date]
+        #    elif id in [2, 3, 6]:
+        #        bond_data[key] = content[id].text.replace("\xa0", '').replace(",", '.').split()[0]
         print("Collecting succesfull.")
     else:
         print(f"Something going wrong.Status code: {response.status_code}")    
@@ -64,7 +68,7 @@ while game_on:
     purchase_info = {
         'ISIN': input("Enter bond's code(UAxxxxxxxxxx): "),
         'Broker': input("Enter the broker name: "),
-        'Purchase_date': input("Enter date of purchase(dd.mm.YYYY): "),
+        'Purchase_date': input("Enter date of purchase(dd.mm.YYYY): "), 
         'Price': float(input("Enter the bond's price: ")),
         'Number': int(input("Enter the number of bond purchased: ")),
     }
@@ -73,7 +77,7 @@ while game_on:
         'Reinvest': float(input("Enter the amount of re-investment: ")),
         'Fee': float(input("Enter the fee: "))
     })
-
+    purchase_info.update(get_bond_data(purchase_info['ISIN']))
     #save_bond_info(purchase_info, 'purchase')
     print(purchase_info)
     #if bond_info_exists(purchase_info['ISIN']):
