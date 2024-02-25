@@ -19,7 +19,7 @@ def get_bond_data(bond_id) -> dict:
         headlines = soup.dl.find_all("dt")
         content = soup.dl.find_all("dd")
         
-        bond_data = {"ISIN": bond_id}
+        bond_data = {"ISIN": bond_id}       
         for id in range(len(headlines)):
             key = headlines[id].text
             if id == 7:
@@ -64,17 +64,20 @@ while game_on:
     purchase_info = {
         'ISIN': input("Enter bond's code(UAxxxxxxxxxx): "),
         'Broker': input("Enter the broker name: "),
-        'Date': input("Enter date of purchase(dd.mm.YYYY): "),
+        'Purchase_date': input("Enter date of purchase(dd.mm.YYYY): "),
         'Price': float(input("Enter the bond's price: ")),
         'Number': int(input("Enter the number of bond purchased: ")),
+    }
+    purchase_info['Purchase_amount'] = round(purchase_info['Price']*purchase_info['Number'], 2)
+    purchase_info.update({
         'Reinvest': float(input("Enter the amount of re-investment: ")),
         'Fee': float(input("Enter the fee: "))
-    }
+    })
 
-    save_bond_info(purchase_info, 'purchase')
-
-    if bond_info_exists(purchase_info['ISIN']):
-        print(f"Bond {purchase_info['ISIN']} informations already exists.")
-    else:
-        bond_info = get_bond_data(purchase_info['ISIN'])
-        save_bond_info(bond_info, 'collect')
+    #save_bond_info(purchase_info, 'purchase')
+    print(purchase_info)
+    #if bond_info_exists(purchase_info['ISIN']):
+    #    print(f"Bond {purchase_info['ISIN']} informations already exists.")
+    #else:
+    #    bond_info = get_bond_data(purchase_info['ISIN'])
+    #    save_bond_info(bond_info, 'collect')
