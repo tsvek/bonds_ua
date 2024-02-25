@@ -3,10 +3,13 @@ import os.path
 import requests
 
 from bs4 import BeautifulSoup
-from datetime import datetime, date
+from datetime import datetime
 
 def get_bond_data(bond_id) -> dict:
-    """Parse bond's data from www.minfin.com.ua. Returns dictinary."""
+    """Parse bond's data from www.minfin.com.ua. 
+    Returns dictinary with nominal yeld, coupon payout and maturity date.
+    Also put actuasls payout dayes in global payout_dates list."""
+    global payout_dates
     url = f"https://index.minfin.com.ua/finance/bonds/{bond_id}/"
 
     response = requests.get(url=url)
@@ -16,20 +19,13 @@ def get_bond_data(bond_id) -> dict:
 
         soup = BeautifulSoup(page, "html.parser")
         
-        headlines = soup.dl.find_all("dt")
         content = soup.dl.find_all("dd")
-        #payout_dates = [date.text for date in content[7] if '.' in date if datetime.strptime(date, '%d.%m.%Y') > datetime.strptime(purchase_info['Purchase_date'], '%d.%m.%Y')]
-        
+        payout_dates = [datetime.strptime(date.text, '%d.%m.%Y') for date in content[7] if '.' in date if datetime.strptime(date, '%d.%m.%Y').date() > purchase_info['Purchase_date']]
         bond_data = {"Nominal_yield_%": float(content[2].text.replace("\xa0", '').replace(",", '.').replace('%', '')),
-                     "Coupon_amount": float(content[3].text.replace("\xa0", '').replace(",", '.')),
-                     "Maturity_date" : content[6].text.replace("\xa0", '').replace(",", '.'),
+                     "Payout_amount": float(content[3].text.replace("\xa0", '').replace(",", '.')),
+                     "Maturity_date" : datetime.strptime(content[6].text.replace("\xa0", '').replace(",", '.'), "%d.%m.%Y").date()
         }       
-        #for id in range(len(headlines)):
-        #    key = headlines[id].text
-        #    if id == 7:
-        #        bond_data[key] = [date.text for date in content[id] if '.' in date]
-        #    elif id in [2, 3, 6]:
-        #        bond_data[key] = content[id].text.replace("\xa0", '').replace(",", '.').split()[0]
+
         print("Collecting succesfull.")
     else:
         print(f"Something going wrong.Status code: {response.status_code}")    
@@ -64,11 +60,10 @@ while game_on:
     if new.lower() == "n":
         game_on = False
         break
-
     purchase_info = {
         'ISIN': input("Enter bond's code(UAxxxxxxxxxx): "),
         'Broker': input("Enter the broker name: "),
-        'Purchase_date': input("Enter date of purchase(dd.mm.YYYY): "), 
+        'Purchase_date': datetime.strptime(input("Enter date of purchase(dd.mm.YYYY): "), '%d.%m.%Y').date(), 
         'Price': float(input("Enter the bond's price: ")),
         'Number': int(input("Enter the number of bond purchased: ")),
     }
@@ -77,11 +72,40 @@ while game_on:
         'Reinvest': float(input("Enter the amount of re-investment: ")),
         'Fee': float(input("Enter the fee: "))
     })
-    purchase_info.update(get_bond_data(purchase_info['ISIN']))
-    #save_bond_info(purchase_info, 'purchase')
+    
+    
+    url = f"https://index.minfin.com.ua/finance/bonds/{purchase_info['ISIN']}/"
+
+    response = requests.get(url=url)
+    payout_dates = []
+    if response.status_code == 200:    
+        print(f"Bond {purchase_info['ISIN']} information found. Collecting...")
+        page = response.text
+
+        soup = BeautifulSoup(page, "html.parser")
+        
+        content = soup.dl.find_all("dd")
+        payout_dates = [datetime.strptime(date.text, '%d.%m.%Y') for date in content[7] if '.' in date if datetime.strptime(date, '%d.%m.%Y').date() > purchase_info['Purchase_date']]
+        bond_data = {"Nominal_yield_%": float(content[2].text.replace("\xa0", '').replace(",", '.').replace('%', '')),
+                     "Payout_amount": float(content[3].text.replace("\xa0", '').replace(",", '.')),
+                     "Maturity_date" : datetime.strptime(content[6].text.replace("\xa0", '').replace(",", '.'), "%d.%m.%Y").date()
+        }       
+
+        print("Collecting succesfull.")
+    else:
+        print(f"Something going wrong.Status code: {response.status_code}")    
+        continue
+
+    purchase_info.update(bond_data)
+    profit_info = {
+        'Holding_period_days': (purchase_info['Maturity_date'] - purchase_info['Purchase_date']).days,
+        'Net_income': round(purchase_info['Number'] * (1000 + purchase_info['Payout_amount'] * len(payout_dates)) - purchase_info['Purchase_amount'], 2),
+    }
+    purchase_info.update(profit_info)
+    purchase_info['Income_%'] = round(purchase_info['Net_income']/purchase_info['Purchase_amount']*100, 2)
+    purchase_info['Year_yield_%'] = round(purchase_info['Income_%']*365/purchase_info['Holding_period_days'], 2)
+    #purchase_info['Status'] = 'Active' if date.today() < purchase_info['Maturity_date'] else purchase_info['Number'] * 1000
+    for year in range(min(payout_dates).year, max(payout_dates).year + 1):
+        purchase_info[f'Payout_yield_{year}'] = purchase_info['Number'] * purchase_info['Payout_amount'] * sum(1 for payout in payout_dates if payout.year == year)
+    
     print(purchase_info)
-    #if bond_info_exists(purchase_info['ISIN']):
-    #    print(f"Bond {purchase_info['ISIN']} informations already exists.")
-    #else:
-    #    bond_info = get_bond_data(purchase_info['ISIN'])
-    #    save_bond_info(bond_info, 'collect')
