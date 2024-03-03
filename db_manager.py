@@ -39,15 +39,14 @@ class DatabaseManager:
 
     def __init__(self, db_name='bonds_ua.db') -> None:
         self.db_name = db_name
-        try:
-            self.conn = sqlite3.connect(self.db_name)
-            print(f"Connected to existing database '{self.db_name}'.")
-        except sqlite3.Error:
+        self.current_data = None
+        if not os.path.isfile(db_name):
             self.create_tables()
-            self.conn = sqlite3.connect(self.db_name)
             print("Database created and connected.")
+        else:
+            print(f"Connected to existing database '{self.db_name}'.")
+        self.conn = sqlite3.connect(self.db_name)
         self.cursor = self.conn.cursor()
-
 
     def create_tables(self):
         """Create database and tables."""
@@ -114,61 +113,63 @@ class DatabaseManager:
         
     def add_purchase_row(self, new):
         """Insert new purchase and start filling cascade."""
+        self.current_data = new
         # Insert new purchase entering data 
         query = "insert into Purchase_info (ISIN, Purchase_date, Quantity, Price, Reinvest, Broker, Fee) values (?, ?, ?, ?, ?, ?, ?);"
-        isin = new['ISIN']
-        self.cursor.execute(query, list(new.values()))
+        #isin = new['ISIN']
+        self.cursor.execute(query, tuple(self.current_data.values()))
         self.conn.commit()
-        print(f"New purchase from {new['Purchase_date']} added to DataBase!")
+        print(f"New purchase from {self.current_data['Purchase_date']} added to DataBase!")
         # Step 1: filling Bonds_info and Payouts if ISIN is new. 
-        if not self.bond_data_exists(isin):
-            bonds_info, payments = get_bond_data(new)
+        if not self.bond_data_exists():
+            bonds_info, payments = get_bond_data(self.current_data)
             self.add_bond_info(bonds_info)
-            self.add_payouts(code=isin, payouts_data=payments)
+            self.add_payouts(payouts_data=payments)
         else:
-            print(f"Bond {isin} information is already in DataBase.")
+            print(f"Bond {self.current_data['ISIN']} information is already in DataBase.")
         # Step 2: filling Analitycs
-        self.add_analytics(new)
+        self.add_analytics()
         # Step 3: filling Income_by_year
+
         # Step 4: filling Exchange_rate
         
 
-    def bond_data_exists(self, code) -> bool:
+    def bond_data_exists(self) -> bool:
         # Return True if bonds data exists in db
         query = "select * from Bonds_info where ISIN = ?;"
-        self.cursor.execute(query, (code,))
+        self.cursor.execute(query, (self.current_data['ISIN'],))
         result = self.cursor.fetchone()
         return True if result else False
     
     def add_bond_info(self, data):
         query = "insert into Bonds_info (ISIN, Nominal_yield, Maturity_date) values (?, ?, ?);"
-        self.cursor.execute(query, list(data.values()))
+        self.cursor.execute(query, tuple(data.values()))
         self.conn.commit()
         print(f"Bond {data['ISIN']} information added.")
 
-    def add_payouts(self, code, payouts_data):
+    def add_payouts(self, payouts_data):
         for date, amount in payouts_data.items():
             query = "insert into Payouts (ISIN, Date, Amount) values (?, ?, ?);"
-            self.cursor.execute(query, (code, date, amount))
+            self.cursor.execute(query, (self.current_data['ISIN'], date, amount))
         self.conn.commit()
-        print(f"Added {code} payouts.")
+        print(f"Added {self.current_data['ISIN']} payouts.")
 
-    def add_analytics(self, purchase):
+    def add_analytics(self):
         # Count total amount of purchase
-        total = round(purchase['Price'] * purchase['Quantity'], 2)
+        total = round(self.current_data['Price'] * self.current_data['Quantity'], 2)
         # Get maturity date from db for calculation holding period
         query = "select Maturity_date from Bonds_info where ISIN = ?;"
-        self.cursor.execute(query, (purchase['ISIN'],))
+        self.cursor.execute(query, (self.current_data['ISIN'],))
         end = self.cursor.fetchone()[0]
-        start = purchase['Purchase_date']
+        start = self.current_data['Purchase_date']
         period = (datetime.strptime(end, "%Y-%m-%d").date() - start).days
         # Get summ of all payouts fot current purchase
         query = "select sum(Amount) from Payouts where ISIN = ? and Date > ?;"
-        self.cursor.execute(query, (purchase['ISIN'], purchase['Purchase_date']))
+        self.cursor.execute(query, (self.current_data['ISIN'], self.current_data['Purchase_date']))
         payouts = self.cursor.fetchone()[0]
         payouts = float(payouts) if payouts is not None else 0
         # Calculating net income
-        net_income = round(purchase['Quantity'] * (1000 + payouts) - total, 2)
+        net_income = round(self.current_data['Quantity'] * (1000 + payouts) - total, 2)
         # Now can calculate income % and year yield in %
         income_percent = round(net_income/total * 100, 2)
         year_yield = round(income_percent*365/period, 2)
@@ -177,18 +178,33 @@ class DatabaseManager:
         self.cursor.execute(query, (total, period, net_income, income_percent, year_yield))
         self.check_status()
         self.conn.commit()
-        print(f"Add row for purchase from {purchase['Purchase_date']}.")
+        print(f"Add row for purchase from {self.current_data['Purchase_date']}.")
 
     def check_status(self):
         query = """
         update Analytics 
-        set Analytics.Status = 'Paid of' 
+        set Status = 'Paid off' 
         where exists (
             select 1
             from Bonds_info
-            where Analytics.ISIN = Bonds_info.ISIN
-            and date(now) >= Bonds_info.Maturity_date;"""
+            join Purchase_info on Bonds_info.ISIN = Purchase_info.ISIN
+            where Analytics.ID = Purchase_info.ID
+            and date('now') >= Bonds_info.Maturity_date
+            );"""
         self.cursor.execute(query)
+        self.conn.commit()
+
+    def add_income(self):
+
+        query = """
+        select sum(Amount) 
+        from Payouts 
+            join Purchase_info on Payouts.ISIN = Purchase_info.ISIN 
+        where Payouts.ISIN = ? 
+            and Payouts.Date > Purchase_info.Purchase_date 
+            and strftime('%Y', Date) = ?;
+        """
+        self.cursor.execute()
 
 
     def close_connection(self):
