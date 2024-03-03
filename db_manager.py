@@ -4,6 +4,9 @@ import sqlite3
 
 from bs4 import BeautifulSoup
 from datetime import datetime
+from key import key
+
+RATE_API_KEY = key
 
 def get_bond_data(new_info) -> dict:
     """Parse bond's data from www.minfin.com.ua. 
@@ -35,6 +38,24 @@ def get_bond_data(new_info) -> dict:
         return {}
     return bond_data, payouts
 
+def get_exchange_rate(date) -> list:
+    """Get exchange rate for a given date and currency. Return number in float type."""
+    url = f"https://api.currencyapi.com/v3/historical"
+    params = {
+        'date': date,
+        'apikey': RATE_API_KEY,
+        'base_currency': "UAH",
+        'currencies': "EUR,USD"
+    }
+    response = requests.get(url=url, params=params)
+    data = response.json()['data']
+    usd = data['USD']['value'] 
+    eur = data['EUR']['value']
+    print("Get them!!=)")
+    return [usd, eur]
+
+
+
 class DatabaseManager:
 
     def __init__(self, db_name='bonds_ua.db') -> None:
@@ -48,7 +69,7 @@ class DatabaseManager:
         self.conn = sqlite3.connect(self.db_name)
         self.cursor = self.conn.cursor()
 
-    def create_tables(self):
+    def create_tables(self) -> None:
         """Create database and tables."""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -84,8 +105,8 @@ class DatabaseManager:
         cursor.execute("""
             create table if not exists Exchange_rate(
                 Date date PRIMARY KEY,
-                Rate_USD numeric(10, 2),
-                Rate_EUR numeric(10, 2)
+                Rate_USD real default 0.0,
+                Rate_EUR real default 0.0
             );
         """)
         cursor.execute("""
@@ -100,61 +121,67 @@ class DatabaseManager:
                 FOREIGN KEY (ID) references Purchase_info (ID)
             );
         """)
-        cursor.execute("""
-            create table if not exists Income_by_year(
-                ID integer PRIMARY KEY autoincrement,
-                ISIN char(12) not null,
-                FOREIGN KEY (ISIN) references Purchase_info (ISIN) 
-            );
-        """)
+        # Concluded that don't need this table. It's easier to calculate data saparetly using python.
+        # cursor.execute("""
+        #     create table if not exists Income_by_year(
+        #         ID integer PRIMARY KEY autoincrement,
+        #         ISIN char(12) not null,
+        #         FOREIGN KEY (ISIN) references Purchase_info (ISIN) 
+        #     );
+        # """)
         conn.commit()
         cursor.close()
         conn.close()
         
-    def add_purchase_row(self, new):
+    def add_purchase_row(self, new) -> None:
         """Insert new purchase and start filling cascade."""
         self.current_data = new
         # Insert new purchase entering data 
         query = "insert into Purchase_info (ISIN, Purchase_date, Quantity, Price, Reinvest, Broker, Fee) values (?, ?, ?, ?, ?, ?, ?);"
-        #isin = new['ISIN']
         self.cursor.execute(query, tuple(self.current_data.values()))
         self.conn.commit()
         print(f"New purchase from {self.current_data['Purchase_date']} added to DataBase!")
+        self.add_exchange_date(self.current_data['Purchase_date'])
         # Step 1: filling Bonds_info and Payouts if ISIN is new. 
         if not self.bond_data_exists():
             bonds_info, payments = get_bond_data(self.current_data)
             self.add_bond_info(bonds_info)
+            self.add_exchange_date(bonds_info['Maturity_date'])
             self.add_payouts(payouts_data=payments)
+            for p_date in payments.keys():
+                self.add_exchange_date(p_date)
         else:
             print(f"Bond {self.current_data['ISIN']} information is already in DataBase.")
         # Step 2: filling Analitycs
         self.add_analytics()
-        # Step 3: filling Income_by_year
 
-        # Step 4: filling Exchange_rate
+        # Step 3: filling Exchange_rate
+        self.add_exchange_rate()
         
-
     def bond_data_exists(self) -> bool:
-        # Return True if bonds data exists in db
+        """Return True if bonds data exists in db"""
         query = "select * from Bonds_info where ISIN = ?;"
         self.cursor.execute(query, (self.current_data['ISIN'],))
         result = self.cursor.fetchone()
         return True if result else False
     
-    def add_bond_info(self, data):
+    def add_bond_info(self, data) -> None:
+        """Add row with bonds info."""
         query = "insert into Bonds_info (ISIN, Nominal_yield, Maturity_date) values (?, ?, ?);"
         self.cursor.execute(query, tuple(data.values()))
         self.conn.commit()
         print(f"Bond {data['ISIN']} information added.")
 
-    def add_payouts(self, payouts_data):
+    def add_payouts(self, payouts_data) -> None:
+        """Add bond payout dates and amoun."""
         for date, amount in payouts_data.items():
             query = "insert into Payouts (ISIN, Date, Amount) values (?, ?, ?);"
             self.cursor.execute(query, (self.current_data['ISIN'], date, amount))
         self.conn.commit()
         print(f"Added {self.current_data['ISIN']} payouts.")
 
-    def add_analytics(self):
+    def add_analytics(self) -> None:
+        """Calculate and fill analitycs part."""
         # Count total amount of purchase
         total = round(self.current_data['Price'] * self.current_data['Quantity'], 2)
         # Get maturity date from db for calculation holding period
@@ -180,7 +207,8 @@ class DatabaseManager:
         self.conn.commit()
         print(f"Add row for purchase from {self.current_data['Purchase_date']}.")
 
-    def check_status(self):
+    def check_status(self) -> None:
+        """Checking purchase bond for paid off. Put 'Paid off' if yes."""
         query = """
         update Analytics 
         set Status = 'Paid off' 
@@ -192,22 +220,41 @@ class DatabaseManager:
             and date('now') >= Bonds_info.Maturity_date
             );"""
         self.cursor.execute(query)
+        print(f"Status changed for {self.cursor.rowcount} transaction(s).")
         self.conn.commit()
 
-    def add_income(self):
+    def add_exchange_date(self, new_date) -> None:
+        """Add unique date to the table."""
+        query = "insert or ignore into Exchange_rate (Date) values (?);"
+        self.cursor.execute(query, (new_date,))
+        if self.cursor.rowcount > 0:
+            print(f"New date({new_date}) was added.")
+        self.conn.commit()
 
-        query = """
-        select sum(Amount) 
-        from Payouts 
-            join Purchase_info on Payouts.ISIN = Purchase_info.ISIN 
-        where Payouts.ISIN = ? 
-            and Payouts.Date > Purchase_info.Purchase_date 
-            and strftime('%Y', Date) = ?;
-        """
-        self.cursor.execute()
+    def add_exchange_rate(self) -> None:
+        """Add rates if it's available."""
+        query = "select Date from Exchange_rate where (Rate_USD = 0.0 or Rate_EUR = 0.0) and date('now') > Date;"
+        self.cursor.execute(query)
+        result = self.cursor.fetchall()
+        if result:
+            for row_date in result:
+                print(f"Looking for rates for {row_date}")
+                usd, eur = get_exchange_rate(row_date)                
+                query = """
+                update Exchange_rate 
+                set Rate_USD = ?,
+                    Rate_EUR = ?
+                where Date = ? and (Rate_USD = 0.0 or Rate_EUR = 0.0);
+                """
+                row_date = datetime.strptime(row_date[0], '%Y-%m-%d').date()
+                self.cursor.execute(query, (usd, eur, row_date))
+                self.conn.commit()
+                print(f"Update rates for {row_date}")
+        else:
+            print("No date for update rate.")
 
-
-    def close_connection(self):
+    def close_connection(self) -> None:
+        """Close connection."""
         self.cursor.close()
         self.conn.close()
     
