@@ -3,3 +3,6 @@ __pycache__
 test.py
 bonds_info.csv
 purchased_info.csv
+bonds_ua.db
+key.py
+my_data.py

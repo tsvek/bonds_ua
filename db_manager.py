@@ -5,6 +5,7 @@ import sqlite3
 from bs4 import BeautifulSoup
 from datetime import datetime
 from key import key
+from time import sleep
 
 RATE_API_KEY = key
 
@@ -17,7 +18,7 @@ def get_bond_data(new_info) -> dict:
     response = requests.get(url=url)
     payout_dates = list()
     if response.status_code == 200:    
-        print(f"Bond {new_info['ISIN']} information found. Collecting...")
+        print(f"{datetime.now().time()}     Bond {new_info['ISIN']} information found. Collecting...")
         page = response.text
 
         soup = BeautifulSoup(page, "html.parser")
@@ -32,9 +33,9 @@ def get_bond_data(new_info) -> dict:
         amount = float(content[3].text.replace("\xa0", '').replace(",", '.'))
         payouts = {payout_date: amount for payout_date in payout_dates}
 
-        print("Collecting succesfull.")
+        print(f"{datetime.now().time()}     Collecting succesfull.")
     else:
-        print(f"Something going wrong.Status code: {response.status_code}")    
+        print(f"{datetime.now().time()}     Something going wrong.Status code: {response.status_code}")    
         return {}
     return bond_data, payouts
 
@@ -51,21 +52,20 @@ def get_exchange_rate(date) -> list:
     data = response.json()['data']
     usd = data['USD']['value'] 
     eur = data['EUR']['value']
-    print("Get them!!=)")
+    print(f"{datetime.now().time()}      Get them!!=)")
     return [usd, eur]
-
-
 
 class DatabaseManager:
 
     def __init__(self, db_name='bonds_ua.db') -> None:
         self.db_name = db_name
         self.current_data = None
+        self.count = 0
         if not os.path.isfile(db_name):
             self.create_tables()
-            print("Database created and connected.")
+            print(f"{datetime.now().time()}    Database created and connected.")
         else:
-            print(f"Connected to existing database '{self.db_name}'.")
+            print(f"{datetime.now().time()}    Connected to existing database '{self.db_name}'.")
         self.conn = sqlite3.connect(self.db_name)
         self.cursor = self.conn.cursor()
 
@@ -140,7 +140,7 @@ class DatabaseManager:
         query = "insert into Purchase_info (ISIN, Purchase_date, Quantity, Price, Reinvest, Broker, Fee) values (?, ?, ?, ?, ?, ?, ?);"
         self.cursor.execute(query, tuple(self.current_data.values()))
         self.conn.commit()
-        print(f"New purchase from {self.current_data['Purchase_date']} added to DataBase!")
+        print(f"{datetime.now().time()}    New purchase from {self.current_data['Purchase_date']} added to DataBase!")
         self.add_exchange_date(self.current_data['Purchase_date'])
         # Step 1: filling Bonds_info and Payouts if ISIN is new. 
         if not self.bond_data_exists():
@@ -151,7 +151,7 @@ class DatabaseManager:
             for p_date in payments.keys():
                 self.add_exchange_date(p_date)
         else:
-            print(f"Bond {self.current_data['ISIN']} information is already in DataBase.")
+            print(f"{datetime.now().time()}        Bond {self.current_data['ISIN']} information is already in DataBase.")
         # Step 2: filling Analitycs
         self.add_analytics()
 
@@ -170,7 +170,7 @@ class DatabaseManager:
         query = "insert into Bonds_info (ISIN, Nominal_yield, Maturity_date) values (?, ?, ?);"
         self.cursor.execute(query, tuple(data.values()))
         self.conn.commit()
-        print(f"Bond {data['ISIN']} information added.")
+        print(f"{datetime.now().time()}    Bond {data['ISIN']} information added.")
 
     def add_payouts(self, payouts_data) -> None:
         """Add bond payout dates and amoun."""
@@ -178,7 +178,7 @@ class DatabaseManager:
             query = "insert into Payouts (ISIN, Date, Amount) values (?, ?, ?);"
             self.cursor.execute(query, (self.current_data['ISIN'], date, amount))
         self.conn.commit()
-        print(f"Added {self.current_data['ISIN']} payouts.")
+        print(f"{datetime.now().time()}    Added {self.current_data['ISIN']} payouts.")
 
     def add_analytics(self) -> None:
         """Calculate and fill analitycs part."""
@@ -205,7 +205,7 @@ class DatabaseManager:
         self.cursor.execute(query, (total, period, net_income, income_percent, year_yield))
         self.check_status()
         self.conn.commit()
-        print(f"Add row for purchase from {self.current_data['Purchase_date']}.")
+        print(f"{datetime.now().time()}    Add row for purchase from {self.current_data['Purchase_date']}.")
 
     def check_status(self) -> None:
         """Checking purchase bond for paid off. Put 'Paid off' if yes."""
@@ -220,7 +220,7 @@ class DatabaseManager:
             and date('now') >= Bonds_info.Maturity_date
             );"""
         self.cursor.execute(query)
-        print(f"Status changed for {self.cursor.rowcount} transaction(s).")
+        print(f"{datetime.now().time()}    Status changed for {self.cursor.rowcount} transaction(s).")
         self.conn.commit()
 
     def add_exchange_date(self, new_date) -> None:
@@ -228,7 +228,7 @@ class DatabaseManager:
         query = "insert or ignore into Exchange_rate (Date) values (?);"
         self.cursor.execute(query, (new_date,))
         if self.cursor.rowcount > 0:
-            print(f"New date({new_date}) was added.")
+            print(f"{datetime.now().time()}         New date({new_date}) was added.")
         self.conn.commit()
 
     def add_exchange_rate(self) -> None:
@@ -238,7 +238,12 @@ class DatabaseManager:
         result = self.cursor.fetchall()
         if result:
             for row_date in result:
-                print(f"Looking for rates for {row_date}")
+                if self.count % 9 == 0:
+                    print("Need some rest...offfff")
+                    sleep(60)
+                    print("Ok. Let's continue =)")
+                self.count += 1
+                print(f"{datetime.now().time()}         Looking for rates for {row_date}")
                 usd, eur = get_exchange_rate(row_date)                
                 query = """
                 update Exchange_rate 
@@ -249,9 +254,9 @@ class DatabaseManager:
                 row_date = datetime.strptime(row_date[0], '%Y-%m-%d').date()
                 self.cursor.execute(query, (usd, eur, row_date))
                 self.conn.commit()
-                print(f"Update rates for {row_date}")
+                print(f"{datetime.now().time()}         Update rates for {row_date}")
         else:
-            print("No date for update rate.")
+            print(f"{datetime.now().time()}     No date for update rate.")
 
     def close_connection(self) -> None:
         """Close connection."""
